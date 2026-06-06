@@ -1,18 +1,25 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173'],
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB!'))
   .catch(err => console.log('MongoDB error:', err));
 
+// Schemas
 const facilitySchema = new mongoose.Schema({
   name: String,
   facility_type: String,
@@ -41,6 +48,32 @@ const bookingSchema = new mongoose.Schema({
 
 const Booking = mongoose.model('Booking', bookingSchema)
 
+// JWT Middleware
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token
+  if (!token) return res.status(401).json({ message: 'Unauthorized' })
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ message: 'Forbidden' })
+    req.user = decoded
+    next()
+  })
+}
+
+// Auth Routes
+app.post('/jwt', (req, res) => {
+  const user = req.body
+  const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' })
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: false,
+    sameSite: 'lax'
+  }).json({ success: true })
+})
+
+app.post('/logout', (req, res) => {
+  res.clearCookie('token').json({ success: true })
+})
+
 // Routes
 app.get('/', (req, res) => {
   res.send('SportNest Server is running!')
@@ -57,7 +90,7 @@ app.get('/facilities', async (req, res) => {
 })
 
 // Add facility
-app.post('/facilities', async (req, res) => {
+app.post('/facilities', verifyToken, async (req, res) => {
   try {
     const facility = new Facility(req.body)
     const result = await facility.save()
@@ -78,7 +111,7 @@ app.get('/facilities/:id', async (req, res) => {
 })
 
 // Update facility
-app.put('/facilities/:id', async (req, res) => {
+app.put('/facilities/:id', verifyToken, async (req, res) => {
   try {
     const result = await Facility.findByIdAndUpdate(req.params.id, req.body, { new: true })
     res.json(result)
@@ -88,7 +121,7 @@ app.put('/facilities/:id', async (req, res) => {
 })
 
 // Delete facility
-app.delete('/facilities/:id', async (req, res) => {
+app.delete('/facilities/:id', verifyToken, async (req, res) => {
   try {
     await Facility.findByIdAndDelete(req.params.id)
     res.json({ deletedCount: 1 })
@@ -98,7 +131,7 @@ app.delete('/facilities/:id', async (req, res) => {
 })
 
 // Add booking
-app.post('/bookings', async (req, res) => {
+app.post('/bookings', verifyToken, async (req, res) => {
   try {
     const booking = new Booking(req.body)
     const result = await booking.save()
@@ -109,9 +142,10 @@ app.post('/bookings', async (req, res) => {
 })
 
 // Get bookings by user email
-app.get('/bookings', async (req, res) => {
+app.get('/bookings', verifyToken, async (req, res) => {
   try {
     const email = req.query.email
+    if (req.user.email !== email) return res.status(403).json({ message: 'Forbidden' })
     const bookings = await Booking.find({ user_email: email })
     res.json(bookings)
   } catch (err) {
@@ -120,7 +154,7 @@ app.get('/bookings', async (req, res) => {
 })
 
 // Cancel booking
-app.delete('/bookings/:id', async (req, res) => {
+app.delete('/bookings/:id', verifyToken, async (req, res) => {
   try {
     await Booking.findByIdAndDelete(req.params.id)
     res.json({ deletedCount: 1 })
