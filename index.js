@@ -19,7 +19,6 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB!'))
   .catch(err => console.log('MongoDB error:', err));
 
-// Schemas
 const facilitySchema = new mongoose.Schema({
   name: String,
   facility_type: String,
@@ -48,7 +47,6 @@ const bookingSchema = new mongoose.Schema({
 
 const Booking = mongoose.model('Booking', bookingSchema)
 
-// JWT Middleware
 const verifyToken = (req, res, next) => {
   const token = req.cookies?.token
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
@@ -59,7 +57,6 @@ const verifyToken = (req, res, next) => {
   })
 }
 
-// Auth Routes
 app.post('/jwt', (req, res) => {
   const user = req.body
   const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' })
@@ -74,22 +71,31 @@ app.post('/logout', (req, res) => {
   res.clearCookie('token').json({ success: true })
 })
 
-// Routes
 app.get('/', (req, res) => {
   res.send('SportNest Server is running!')
 })
 
-// Get all facilities
+// Get all facilities with search and filter ($regex, $in)
 app.get('/facilities', async (req, res) => {
   try {
-    const facilities = await Facility.find()
+    const { search, type } = req.query
+    let query = {}
+
+    if (search) {
+      query.name = { $regex: search, $options: 'i' }
+    }
+
+    if (type) {
+      query.facility_type = { $in: [type] }
+    }
+
+    const facilities = await Facility.find(query)
     res.json(facilities)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// Add facility
 app.post('/facilities', verifyToken, async (req, res) => {
   try {
     const facility = new Facility(req.body)
@@ -100,7 +106,6 @@ app.post('/facilities', verifyToken, async (req, res) => {
   }
 })
 
-// Get single facility
 app.get('/facilities/:id', async (req, res) => {
   try {
     const facility = await Facility.findById(req.params.id)
@@ -110,7 +115,6 @@ app.get('/facilities/:id', async (req, res) => {
   }
 })
 
-// Update facility
 app.put('/facilities/:id', verifyToken, async (req, res) => {
   try {
     const result = await Facility.findByIdAndUpdate(req.params.id, req.body, { new: true })
@@ -120,7 +124,6 @@ app.put('/facilities/:id', verifyToken, async (req, res) => {
   }
 })
 
-// Delete facility
 app.delete('/facilities/:id', verifyToken, async (req, res) => {
   try {
     await Facility.findByIdAndDelete(req.params.id)
@@ -130,7 +133,6 @@ app.delete('/facilities/:id', verifyToken, async (req, res) => {
   }
 })
 
-// Add booking
 app.post('/bookings', verifyToken, async (req, res) => {
   try {
     const booking = new Booking(req.body)
@@ -141,7 +143,6 @@ app.post('/bookings', verifyToken, async (req, res) => {
   }
 })
 
-// Get bookings by user email
 app.get('/bookings', verifyToken, async (req, res) => {
   try {
     const email = req.query.email
@@ -153,7 +154,6 @@ app.get('/bookings', verifyToken, async (req, res) => {
   }
 })
 
-// Cancel booking
 app.delete('/bookings/:id', verifyToken, async (req, res) => {
   try {
     await Booking.findByIdAndDelete(req.params.id)
