@@ -62,33 +62,33 @@ app.post('/jwt', (req, res) => {
   const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' })
   res.cookie('token', token, {
     httpOnly: true,
-    secure: false,
-    sameSite: 'lax'
+    secure: true,
+    sameSite: 'none'
   }).json({ success: true })
 })
 
 app.post('/logout', (req, res) => {
-  res.clearCookie('token').json({ success: true })
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none'
+  }).json({ success: true })
 })
 
 app.get('/', (req, res) => {
   res.send('SportNest Server is running!')
 })
 
-// Get all facilities with search and filter ($regex, $in)
 app.get('/facilities', async (req, res) => {
   try {
     const { search, type } = req.query
     let query = {}
-
     if (search) {
       query.name = { $regex: search, $options: 'i' }
     }
-
     if (type) {
       query.facility_type = { $in: [type] }
     }
-
     const facilities = await Facility.find(query)
     res.json(facilities)
   } catch (err) {
@@ -158,6 +158,15 @@ app.delete('/bookings/:id', verifyToken, async (req, res) => {
   try {
     await Booking.findByIdAndDelete(req.params.id)
     res.json({ deletedCount: 1 })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/facilities-count', async (req, res) => {
+  try {
+    const count = await Facility.countDocuments()
+    res.json({ count })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
